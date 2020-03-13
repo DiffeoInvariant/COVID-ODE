@@ -7,10 +7,12 @@ const PetscInt _MMNumStates[] = {3, 4};
 
 PetscErrorCode SEISRHSFunction(TS ts, PetscReal t, Vec X, Vec F, void *ctx);
 PetscErrorCode SEISRHSJacobian(TS ts, PetscReal t, Vec X, Mat Jac, Mat Pre, void *ctx);
+PetscErrorCode SEISRHSJacobianP(TS ts, PetscReal t, Vec X, Mat JacP, void *ctx);
+
 
 const TSRHSFunction _MMRHS[] = {SEISRHSFunction};
 const TSRHSJacobian _MMRHS_JAC[] = {SEISRHSJacobian};
-
+const RHSJPFunc     _MMRHS_JP[] = {SEISRHSJacobianP};
 
   
 
@@ -74,6 +76,31 @@ PetscErrorCode SEISRHSJacobian(TS ts, PetscReal t, Vec X, Mat Jac, Mat Pre, void
   PetscFunctionReturn(0);
 }
 
+PetscErrorCode SEISRHSJacobianP(TS ts, PetscReal t, Vec X, Mat JacP, void *ctx)
+{
+  PetscErrorCode    ierr;
+  MixedModel        model=(MixedModel)ctx;
+  PetscInt          rows[] = {0,1,2}, cols[]={0,1,2,3,4,5};
+  PetscScalar       J[3][6];
+  const PetscScalar *x;
+
+  PetscFunctionBeginUser;
+  ierr = VecGetArrayRead(X, &x);CHKERRQ(ierr);
+  J[0][0] = 1.0; J[0][1] = -x[0] * x[2]; J[0][2] = 0.0;
+  J[0][3] = -x[0]; J[0][4] = 0.0; J[0][5] = x[2];
+
+  J[1][0] = 0.0; J[1][1] = x[0] * x[2]; J[1][2] = -x[1];
+  J[1][3] = -x[1]; J[1][4] = 0.0; J[1][5] = 0.0;
+
+  J[2][0] = 0.0; J[2][1] = 0.0; J[2][2] = x[1];
+  J[2][3] = 0.0; J[2][4] = -x[2]; J[2][5] = -x[2];
+  ierr = VecRestoreArrayRead(X, &x);CHKERRQ(ierr);
+  ierr = MatSetValues(JacP, 3, rows, 6, cols, &J[0][0], INSERT_VALUES);CHKERRQ(ierr);
+  ierr = MatAssemblyBegin(JacP,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatAssemblyEnd(JacP,MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  PetscFunctionReturn(ierr);
+}
+
 PetscErrorCode MixedModelCreate(MixedModel *model)
 {
   PetscErrorCode ierr;
@@ -92,8 +119,11 @@ static PetscErrorCode destroy_adjoint_vecs(MixedModel model)
   PetscInt       i;
   PetscFunctionBeginUser;
   for(i=0; i<model->states; ++i){
-    if(model->lambda[i]){
+    if(model->lambda){
       ierr = VecDestroy(&model->lambda[i]);
+    }
+    if(model->mu){
+      ierr = VecDestroy(&model->mu[i]);
     }
   }
   PetscFunctionReturn(ierr);
@@ -109,6 +139,9 @@ PetscErrorCode MixedModelDestroy(MixedModel model)
     }
     if(model->Jac){
       ierr = MatDestroy(&model->Jac);
+    }
+    if(model->JacP){
+      ierr = MatDestroy(&model->JacP);
     }
     if(model->lambda){
       ierr = destroy_adjoint_vecs(model);
@@ -138,17 +171,29 @@ PetscErrorCode MixedModelSetType(MixedModel model, MixedModelType type)
   ierr = PetscMalloc1(_MMNumParams[type], &model->params);CHKERRQ(ierr);
   model->states = _MMNumStates[type];
   ierr = PetscMalloc1(model->states, &model->lambda);CHKERRQ(ierr);
+  ierr = PetscMalloc1(model->states, &model->mu);CHKERRQ(ierr);
+  
   model->rhs = _MMRHS[type];
   model->rhs_jac = _MMRHS_JAC[type];
+  model->rhs_jacp = _MMRHS_JP[type];
   ierr = TSCreate(PETSC_COMM_WORLD, &(model->ts));CHKERRQ(ierr);
+  
   ierr = MatCreate(PETSC_COMM_WORLD, &model->Jac);
   ierr = MatSetSizes(model->Jac, PETSC_DECIDE, PETSC_DECIDE, model->states, model->states);CHKERRQ(ierr);
   ierr = MatSetFromOptions(model->Jac);CHKERRQ(ierr);
   ierr = MatSetUp(model->Jac);CHKERRQ(ierr);
+  
+  ierr = MatCreate(PETSC_COMM_WORLD, &model->JacP);
+  ierr = MatSetSizes(model->JacP, PETSC_DECIDE, PETSC_DECIDE, model->states, _MMNumParams[type]);CHKERRQ(ierr);
+  ierr = MatSetFromOptions(model->JacP);CHKERRQ(ierr);
+  ierr = MatSetUp(model->JacP);CHKERRQ(ierr);
+  
   ierr = MatCreateVecs(model->Jac, &model->X, NULL);CHKERRQ(ierr);
   ierr = MatCreateVecs(model->Jac, &model->F, NULL);CHKERRQ(ierr);
+  
   ierr = TSSetRHSFunction(model->ts, model->F, model->rhs, model);CHKERRQ(ierr);
   ierr = TSSetRHSJacobian(model->ts, model->Jac, model->Jac, model->rhs_jac, model);CHKERRQ(ierr);
+  ierr = TSSetRHSJacobianP(model->ts, model->JacP, model->rhs_jacp, model);CHKERRQ(ierr);
   PetscFunctionReturn(ierr);
 }
 
@@ -240,11 +285,28 @@ static PetscErrorCode allocate_identity_adjoint_vecs(MixedModel model)
   PetscFunctionReturn(ierr);
 }
 
-PetscErrorCode MixedModelSetCostGradients(MixedModel model, Vec *lambda)
+static PetscErrorCode allocate_zero_param_adjoint_vecs(MixedModel model)
+{
+  PetscErrorCode ierr;
+  PetscScalar    *x;
+  PetscInt       i, j;
+  PetscFunctionBeginUser;
+  for(i=0; i<model->states; ++i){
+    ierr = MatCreateVecs(model->JacP, &model->mu[i], NULL);CHKERRQ(ierr);
+    ierr = VecGetArray(model->mu[i], &x);CHKERRQ(ierr);
+    for(j=0; j<_MMNumParams[model->type]; ++j){
+      x[j] = 0.0;
+    }
+    ierr = VecRestoreArray(model->mu[i], &x);CHKERRQ(ierr);
+  }
+  PetscFunctionReturn(ierr);
+}
+
+PetscErrorCode MixedModelSetCostGradients(MixedModel model, Vec *lambda, Vec *mu)
 {
   PetscErrorCode ierr;
   PetscFunctionBeginUser;
-  ierr = TSSetCostGradients(model->ts, model->states, lambda, NULL);CHKERRQ(ierr);
+  ierr = TSSetCostGradients(model->ts, model->states, lambda, mu);CHKERRQ(ierr);
   model->custom_cost_gradient = PETSC_TRUE;
   PetscFunctionReturn(ierr);
 }
@@ -256,7 +318,8 @@ PetscErrorCode MixedModelAdjointSolve(MixedModel model)
   PetscFunctionBeginUser;
   if(!(model->custom_cost_gradient)){
     ierr = allocate_identity_adjoint_vecs(model);CHKERRQ(ierr);
-    ierr = TSSetCostGradients(model->ts, model->states, model->lambda, NULL);CHKERRQ(ierr);
+    ierr = allocate_zero_param_adjoint_vecs(model);CHKERRQ(ierr);
+    ierr = TSSetCostGradients(model->ts, model->states, model->lambda, model->mu);CHKERRQ(ierr);
   }
   ierr = TSAdjointSolve(model->ts);CHKERRQ(ierr);
   PetscFunctionReturn(ierr);

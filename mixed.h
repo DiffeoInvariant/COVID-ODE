@@ -9,15 +9,18 @@ typedef enum {
 		     SEIR=1
 } MixedModelType;
 
+typedef PetscErrorCode (*RHSJPFunc)(TS,PetscReal,Vec,Mat,void*);
+
 struct _mixed_model {
   MixedModelType type;
   TSRHSFunction  rhs;
   TSRHSJacobian  rhs_jac;
+  RHSJPFunc      rhs_jacp;
   PetscInt       states;
   PetscScalar    *params;
   TS             ts;
-  Mat            Jac;/*Jacobian*/
-  Vec            X, F, *lambda;/*adjoint variables*/
+  Mat            Jac, JacP;/*Jacobian for state and parameters*/
+  Vec            X, F, *lambda, *mu;/*adjoint variables*/
   PetscBool      custom_cost_gradient;
 };
 
@@ -43,7 +46,7 @@ extern PetscErrorCode SEISCreate(MixedModel *seis);
 
 extern PetscErrorCode MixedModelSolve(MixedModel model, Vec X0);
 
-extern PetscErrorCode MixedModelSetCostGradients(MixedModel model, Vec *lambda);
+extern PetscErrorCode MixedModelSetCostGradients(MixedModel model, Vec *lambda, Vec *mu);
 
 extern PetscErrorCode MixedModelAdjointSolve(MixedModel model);
 
