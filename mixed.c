@@ -259,6 +259,7 @@ PetscErrorCode MixedModelSolve(MixedModel model, Vec X0)
   ierr = VecCopy(X0, model->X);CHKERRQ(ierr);
   ierr = TSSetSolution(model->ts, model->X);CHKERRQ(ierr);
   ierr = TSSetSaveTrajectory(model->ts);CHKERRQ(ierr);
+  ierr = TSSetProblemType(model->ts, TS_NONLINEAR);CHKERRQ(ierr);
   ierr = TSSetUp(model->ts);CHKERRQ(ierr);
   ierr = TSSolve(model->ts, model->X);CHKERRQ(ierr);
   PetscFunctionReturn(ierr);

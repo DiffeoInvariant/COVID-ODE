@@ -14,6 +14,15 @@ int main(int argc, char **argv)
 
   ierr = PetscInitialize(&argc, &argv, NULL, NULL);CHKERRQ(ierr);
   ierr = SEISCreate(&seis);CHKERRQ(ierr);
+  ierr = PetscOptionsGetReal(NULL, NULL, "-tf", &tf, &flg);CHKERRQ(ierr);
+  if(!flg){
+    tf = 10000.0;
+  }
+
+  ierr = PetscOptionsGetReal(NULL, NULL, "-dt", &dt, &flg);CHKERRQ(ierr);
+  if(!flg){
+    dt = 0.01;
+  }
   ierr = PetscOptionsGetRealArray(NULL, NULL, "-params", params, &nparam, &flg);CHKERRQ(ierr);
   if(flg){
     if(nparam != 6){
@@ -51,12 +60,17 @@ int main(int argc, char **argv)
   ierr = MixedModelAdjointSolve(seis);CHKERRQ(ierr);
 
   /*ierr = TSGetSolution(seis->ts, &X);CHKERRQ(ierr);*/
-  ierr = PetscPrintf(PETSC_COMM_WORLD, "Adjoint variables:\n");CHKERRQ(ierr);
+  ierr = PetscPrintf(PETSC_COMM_WORLD, "Adjoint variables w.r.t. state:\n");CHKERRQ(ierr);
   for(i = 0; i < 3; ++i){
     ierr = VecView(seis->lambda[i], PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
   }
 
-  ierr = VecDestroy(&X);CHKERRQ(ierr);
+  ierr = PetscPrintf(PETSC_COMM_WORLD, "Adjoint variables w.r.t. parameters:\n");CHKERRQ(ierr);
+  for(i = 0; i < 3; ++i){
+    ierr = VecView(seis->mu[i], PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
+  }
+
+  /*ierr = VecDestroy(&X);CHKERRQ(ierr);*/
   ierr = MixedModelDestroy(seis);CHKERRQ(ierr);
   ierr = PetscFinalize();
   return 0;
