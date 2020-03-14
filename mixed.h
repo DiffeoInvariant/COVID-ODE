@@ -11,13 +11,17 @@ typedef enum {
 
 typedef PetscErrorCode (*RHSJPFunc)(TS,PetscReal,Vec,Mat,void*);
 
+typedef PetscErrorCode (*R0Func)(PetscScalar *, PetscReal *);
+
 struct _mixed_model {
   MixedModelType type;
   TSRHSFunction  rhs;
   TSRHSJacobian  rhs_jac;
   RHSJPFunc      rhs_jacp;
+  R0Func         basic_r0_func;
   PetscInt       states;
   PetscScalar    *params;
+  PetscReal      population, prev_population, dead;
   TS             ts;
   Mat            Jac, JacP;/*Jacobian for state and parameters*/
   Vec            X, F, *lambda, *mu;/*adjoint variables*/
@@ -32,6 +36,10 @@ extern PetscErrorCode MixedModelDestroy(MixedModel model);
 
 extern PetscErrorCode MixedModelSetParams(MixedModel model, PetscScalar *params);
 
+extern PetscErrorCode MixedModelReproductionNumber(MixedModel model, PetscReal *R0);
+
+extern PetscErrorCode MixedModelGetTotalDeaths(MixedModel model, PetscReal *TotalDeaths);
+
 extern PetscErrorCode MixedModelSetType(MixedModel model, MixedModelType type);
 
 extern PetscErrorCode MixedModelSetTimeStep(MixedModel model, PetscReal dt);
@@ -43,6 +51,8 @@ extern PetscErrorCode MixedModelSetTSType(MixedModel model, TSType type);
 extern PetscErrorCode MixedModelSetFromOptions(MixedModel model);
 
 extern PetscErrorCode SEISCreate(MixedModel *seis);
+
+extern PetscErrorCode SEIRCreate(MixedModel *seir);
 
 extern PetscErrorCode MixedModelSolve(MixedModel model, Vec X0);
 
