@@ -43,8 +43,10 @@ int main(int argc, char **argv)
   x0[0] = 10.0;
   x0[1] = 1.0;
   x0[2] = 1.0;
+  x0[3] = 0.0;
+  x0[4] = 0.0;
   ierr = VecRestoreArray(X, &x0);CHKERRQ(ierr);
-  ierr = PetscPrintf(PETSC_COMM_WORLD, "Initial disease state (S, E, I):\n");CHKERRQ(ierr);
+  ierr = PetscPrintf(PETSC_COMM_WORLD, "Initial disease state (S, E, I, Dead (non-infection), Dead (infection)):\n");CHKERRQ(ierr);
   ierr = MixedModelReproductionNumber(seis, &R0);CHKERRQ(ierr);
   PetscPrintf(PETSC_COMM_WORLD, "Basic reproduction number (R0): %.4f.\n", R0);
   ierr = VecView(X, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
@@ -57,18 +59,18 @@ int main(int argc, char **argv)
   TSGetSolveTime(seis->ts,&tf);
   TSGetStepNumber(seis->ts,&nsteps);
   PetscPrintf(PETSC_COMM_WORLD,"%s at time %g after %D steps\n",TSConvergedReasons[reason],(double)tf,nsteps);
-  ierr = PetscPrintf(PETSC_COMM_WORLD, "Final disease state (S, E, I):\n");CHKERRQ(ierr);
+  ierr = PetscPrintf(PETSC_COMM_WORLD, "Final disease state (S, E, I, Dead (non-infection), Dead (infection)):\n");CHKERRQ(ierr);
   ierr = VecView(seis->X, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
   ierr = MixedModelAdjointSolve(seis);CHKERRQ(ierr);
 
   /*ierr = TSGetSolution(seis->ts, &X);CHKERRQ(ierr);*/
   ierr = PetscPrintf(PETSC_COMM_WORLD, "Adjoint variables w.r.t. state:\n");CHKERRQ(ierr);
-  for(i = 0; i < 3; ++i){
+  for(i = 0; i < 5; ++i){
     ierr = VecView(seis->lambda[i], PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
   }
 
   ierr = PetscPrintf(PETSC_COMM_WORLD, "Adjoint variables w.r.t. parameters:\n");CHKERRQ(ierr);
-  for(i = 0; i < 3; ++i){
+  for(i = 0; i < 5; ++i){
     ierr = VecView(seis->mu[i], PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
   }
 

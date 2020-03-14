@@ -6,11 +6,11 @@ PETSC_ARCH=arch-linux2-c-debug
 include $(PETSC_DIR)/$(PETSC_ARCH)/lib/petsc/conf/petscvariables
 include $(PETSC_DIR)/$(PETSC_ARCH)/lib/petsc/conf/petscrules
 
-.PHONY: all mixed seis_test seir_test
+.PHONY: all mixed seis_test seir_test var_ic_test
 
-all: mixed seis_test seir_test
+all: mixed seis_test seir_test var_ic_test
 
-mixed: mixed.c
+mixed: mixed.c obs.c
 	$(CC) -shared -fPIC $(CFLAGS) $^ -o libmixed.so $(PETSC_CC_INCLUDES)
 
 seis_test: seis_test.c
@@ -18,3 +18,6 @@ seis_test: seis_test.c
 
 seir_test: seir_test.c
 	$(CC) $(CFLAGS) $^ -o seir_test $(PETSC_CC_INCLUDES) $(PETSC_WITH_EXTERNAL_LIB) -L./ -lmixed
+
+var_ic_test: var_ic_test.c
+	$(CC) $(CFLAGS) $^ -o var_ic_test $(PETSC_CC_INCLUDES) $(PETSC_WITH_EXTERNAL_LIB) -L./ -lmixed
